@@ -113,8 +113,10 @@ int wav_fmt(wav_reader_t *reader, uint32_t size)
     wValidBitsPerSample = wBitsPerSample;
 
     ENSURE(wFormatTag == 1 || wFormatTag == 3 || wFormatTag == 0xfffe);
-    ENSURE(nChannels && nSamplesPerSec && nAvgBytesPerSec &&
-           nBlockAlign && wBitsPerSample && !(wBitsPerSample & 7) &&
+    ENSURE(nChannels > 0 && nChannels <= 8 &&
+           nSamplesPerSec && nAvgBytesPerSec &&
+           nBlockAlign && nBlockAlign < 256 &&
+           wBitsPerSample && wBitsPerSample < 256 && !(wBitsPerSample & 7) &&
            nBlockAlign == nChannels * wBitsPerSample / 8);
 
     if (wFormatTag == 3)
@@ -155,6 +157,7 @@ static
 int wav_parse(wav_reader_t *reader, int64_t *data_length)
 {
     uint32_t container, fcc, chunk_size;
+    int fmt_seen = 0;
 
     *data_length = 0;
     container = riff_next_chunk(reader, &chunk_size);
@@ -167,6 +170,7 @@ int wav_parse(wav_reader_t *reader, int64_t *data_length)
         riff_ds64(reader, data_length);
     while ((fcc = riff_next_chunk(reader, &chunk_size)) != 0) {
         if (fcc == RIFF_FOURCC('f','m','t',' ')) {
+            fmt_seen = 1;
             if (wav_fmt(reader, chunk_size) < 0)
                 goto FAIL;
         } else if (fcc == RIFF_FOURCC('d','a','t','a')) {
@@ -178,8 +182,8 @@ int wav_parse(wav_reader_t *reader, int64_t *data_length)
             TRY_IO(pcm_skip(&reader->io, (chunk_size + 1) & ~1));
         }
     }
-    if (fcc == RIFF_FOURCC('d','a','t','a'))
-        return 0;
+    ENSURE(fmt_seen && fcc == RIFF_FOURCC('d', 'a', 't', 'a'));
+    return 0;
 FAIL:
     return -1;
 }
